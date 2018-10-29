@@ -1,0 +1,56 @@
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prometheus-pvc-claim
+  namespace: monitoring 
+  labels:
+    service: prometheus 
+spec:
+  accessModes:
+    - ReadOnlyMany
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: prometheus-deployment
+  namespace: monitoring 
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: prometheus-server
+    spec:
+      initContainers:
+        - name: "init-chown-data"
+          image: "busybox"
+          command: ["chown", "-R", "65534:65534", /var/prometheus/data]
+          volumeMounts:
+          - name: prometheus-storage-volume 
+            mountPath: /var/prometheus/data
+      containers:
+        - name: prometheus
+          image: quay.io/prometheus/prometheus:v2.1.0 
+          args:
+            - "--storage.tsdb.retention=10d"
+            - "--config.file=/etc/prometheus/prometheus.yml"
+            - "--storage.tsdb.path=/var/prometheus/data"
+            - "--storage.tsdb.no-lockfile"          
+          ports:
+            - containerPort: 9090
+          volumeMounts:
+            - name: prometheus-config-volume
+              mountPath: /etc/prometheus/
+      volumes:
+        - name: prometheus-config-volume
+          configMap:
+            defaultMode: 420
+            name: prometheus-server-conf
+  
+        - name: prometheus-storage-volume
+          persistentVolumeClaim:
+            claimName: prometheus-pvc-claim
